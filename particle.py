@@ -1,6 +1,10 @@
 import scipy as sp
 import scipy.linalg as spl
 
+from collections import namedtuple
+
+FutureCollision = namedtuple("FutureCollision", "time_until", "particle1", "particle2")
+
 class Particle2D(object):
     """
     Class representing a generalised 2-dimensional 'spherical' particle.
