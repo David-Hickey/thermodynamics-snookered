@@ -3,7 +3,7 @@ import scipy.linalg as spl
 
 from collections import namedtuple
 
-FutureCollision = namedtuple("FutureCollision", "time_until", "particle1", "particle2")
+FutureCollision = namedtuple("FutureCollision", ("time_until", "particle_1", "particle_2"))
 
 class Particle2D(object):
     """
@@ -289,10 +289,7 @@ def calculate_time_to_collision_all(particles):
              2) a tuple containing the particles that will collide next.
     """
 
-    least_time_so_far = -1
-    particles_responsible_for_collision = None
-
-    #print "Particle length", particles
+    future_collisions = []
    
     for i_1, particle_1 in enumerate(particles):
         # We truncate the second list because otherwise we would compare each
@@ -302,19 +299,15 @@ def calculate_time_to_collision_all(particles):
         # This has the added benefit of ensuring that no particle is ever
         # compared to itself, so we do not have to check identity explicitly.
 
-        #print "i =", i_1
-
         for particle_2 in particles[:i_1]:
             time_to_collision_pair = particle_1.calculate_time_to_collision(particle_2)
 
             # We do not need to worry about any occurences of NaN here because
             # any ==, < or > operation involving NaN is false.
 
-            if least_time_so_far < 0 or time_to_collision_pair < least_time_so_far:
-                least_time_so_far = time_to_collision_pair
-                particles_responsible_for_collision = (particle_1, particle_2)
+            if not sp.isnan(time_to_collision_pair):
+                future_collisions.append(FutureCollision(time_to_collision_pair, particle_1, particle_2))
 
-    if least_time_so_far < 0:
-        return sp.nan
+    future_collisions.sort(key=lambda coll: coll.time_until)
 
-    return (least_time_so_far, particles_responsible_for_collision)
+    return future_collisions
