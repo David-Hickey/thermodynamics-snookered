@@ -168,13 +168,13 @@ class Particle2D(object):
         discriminant = dt_coefficient ** 2 - (4 * dt_sq_coefficient * constant_coefficient)
 
         #print "#printING SOLUTIONS TO QUADRATIC"
-        print "disc", discriminant
-        print dt_sq_coefficient, dt_coefficient, constant_coefficient
+        #print "disc", discriminant
+        #print dt_sq_coefficient, dt_coefficient, constant_coefficient
         #print self.__position, other_particle.__position
         #print self.__velocity, other_particle.__velocity
         #print self.__radius, other_particle.__radius
 
-        if discriminant < 0 or (dt_sq_coefficient == 0 and dt_coefficient == 0):
+        if discriminant < 0 or dt_sq_coefficient == 0:
             # Particles are not on a collision trajectory, so we can return NaN
             # as described in the docstring.
             return sp.nan
@@ -191,7 +191,10 @@ class Particle2D(object):
             # We're only interested in the first collision, that has a dt which
             # is greater than (or equal to) zero, so return the smallest
             # positive root:
-            return min(root for root in (root_1, root_2) if root >= 0)
+            try:
+                return min(root for root in (root_1, root_2) if root >= 0)
+            except ValueError:
+                print sqrt_discriminant, dt_sq_coefficient, dt_coefficient, constant_coefficient
 
     def handle_collision(self, other_particle):
         """
@@ -278,15 +281,12 @@ class Particle2D(object):
 
 def calculate_time_to_collision_all(particles):
     """
-    Compare all particles to find the next collision.
+    Compare all particles to find the next collisions.
 
     Arguments:
         particles: an array-like containing Particle objecs.
 
-    Returns: a tuple containing (respectively):
-             1) the time until the next collision, or NaN if there is no
-                impending collision between particles.
-             2) a tuple containing the particles that will collide next.
+    Returns: a list of FutureCollision instances, sorted by most imminent first.
     """
 
     future_collisions = []
