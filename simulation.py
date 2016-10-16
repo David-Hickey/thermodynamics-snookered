@@ -40,6 +40,12 @@ class Simulation(object):
     def __handle_collision(self):
         time_since_last_collision_calculation = self.__steps_since_last_collision_calculation * self.__time_step
 
+        # This is not valid because a collision may change future collisions,
+        # which isn't accounted for here.
+        #
+        # For this reason I propose something be added to setup_for_next that
+        # will handle the problem when the number of steps == 0.
+        #
         for collision in self.__future_collisions:
             time_until = collision.time_until - time_since_last_collision_calculation
             not_integer_number_of_steps = time_until / Simulation.approximate_time_step
@@ -92,20 +98,21 @@ test_pa_3 = pa.Particle2D((-50, 0), (0, 7), radius = 5, mass = 1)
 test_pa_4 = pa.Particle2D((-90, 0), (0, 7), radius = 5, mass = 1)
 test_pa_5 = pa.Particle2D((-30, 0), (0, -7), radius = 5, mass = 1)
 test_pa_6 = pa.Particle2D((20, -30), (0, -7), radius = 5, mass = 1)
-big = pa.Particle2D((-40, -40), (0, 0), radius = 20, mass = 1)
+big = pa.Particle2D((-35, -40), (0, 0), radius = 30, mass = 10)
 
 sim = Simulation(container)
+sim.add_particle(big)
 sim.add_particle(test_pa)
 sim.add_particle(test_pa_2)
 sim.add_particle(test_pa_3)
 sim.add_particle(test_pa_4)
 sim.add_particle(test_pa_5)
 sim.add_particle(test_pa_6)
-sim.add_particle(big)
+
 
 def next_step(frame, figure, simulation):
     # Calculate the next simulation step.
-    sim.next_step()
+    simulation.next_step()
 
     # Clear the figure so previous frames don't persist.
     figure.clf()

@@ -30,6 +30,10 @@ class Particle2D(object):
         self.__radius = float(abs(radius))
         self.__immovable = immovable
 
+        # TODO: implement calculations using these
+        self.__next_collision_time = sp.nan
+        self.__next_collision_particle = None
+
         if self.__immovable:
             self.__velocity *= 0
 
@@ -265,11 +269,11 @@ class Particle2D(object):
         # Update the velocities of the two particles.
         if not self.__immovable:
             self.__velocity = self_velocity_after
-            self.update_position(0.001)
+            #self.update_position(0.001)
 
         if not other_particle.__immovable:
             other_particle.__velocity = other_velocity_after
-            self.update_position(0.001)
+            #self.update_position(0.001)
 
 
     def __str__(self):
@@ -311,3 +315,6 @@ def calculate_time_to_collision_all(particles):
     future_collisions.sort(key=lambda coll: coll.time_until)
 
     return future_collisions
+
+def calculate_time_to_collision(particle, particles):
+    raise NotImplemented()
