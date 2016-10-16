@@ -16,57 +16,53 @@ class Simulation(object):
         self.__container = container
         self.__particles = [self.__container]
 
-        # time_step is the simulation time between successive iterations. It
-        # should be defined such that the ratio of time until next collision
-        # and time_step is an integer.
-        self.__time_step = sp.nan
+        self.__future_collisions = None
         self.__time_until_next_collision = sp.nan
         self.__steps_until_next_collision = sp.nan
-        self.__next_colliding_particles = None
+        self.__time_step = sp.nan
+        self.__steps_since_last_collision_calculation = sp.nan
 
     def add_particle(self, particle):
         self.__particles.append(particle)
 
     def get_particles(self):
-        # Think carefully about this - it exposes the particles
         return tuple(self.__particles)
 
-    def __handle_collision(self):
-        #print "HANDLING COLLISION IN NEXT"
-        # Clean up all the data pertaining to the collision which just
-        # passed.
-        self.__next_colliding_particles[0].handle_collision(self.__next_colliding_particles[1])
-
+    def __clean_up_after_collision(self):
+        self.__future_collisions = None
         self.__time_until_next_collision = sp.nan
-        self.__time_step = sp.nan
         self.__steps_until_next_collision = sp.nan
-        self.__next_colliding_particles = None
+        self.__time_step = sp.nan
+        self.__steps_since_last_collision_calculation = sp.nan
+
+    def __handle_collision(self):
+        time_since_last_collision_calculation = self.__steps_since_last_collision_calculation * self.__time_step
+        
+        collisions_this_step = [
+            collision for collision in self.__future_collisions if collision.time_until <= time_since_last_collision_calculation
+        ]
+        
+        for future_collision in collisions_this_step:
+            future_collision.particle_1.handle_collision(future_collision.particle_2)
+            
 
     def __setup_for_next_collision(self):
-            #print "SETTING UP FOR FUTURE COLLISION"
-            # If there are no collisions forecast, calculate when the next one
-            # will be.
-            self.__time_until_next_collision, self.__next_colliding_particles = pa.calculate_time_to_collision_all(self.__particles)
+        self.__future_collisions = pa.calculate_time_to_collision_all(self.__particles)
 
-            # self.__time_until_next_collision, self.__next_colliding_particles
+        print "\n\nFUTURE COLLISIONS", self.__future_collisions, "\n\n"
 
-            # until / step = int, but we want step to be close to
-            # approximate_time_step. We can work out what the int would be if
-            # it wasn't constrained to the integers, then round it to an integer
-            # value to find the closest integer to the value we want.
-            not_integer = self.__time_until_next_collision / Simulation.approximate_time_step
+        self.__time_until_next_collision = self.__future_collisions[0].time_until
 
-            #print "not_integer", not_integer
-            
-            integer = sp.floor(not_integer)
+        # Calculate the time step length and number of steps.
+        not_integer_number_of_steps = self.__time_until_next_collision / Simulation.approximate_time_step
 
-            self.__time_step = self.__time_until_next_collision / integer
-            self.__steps_until_next_collision = integer
+        print "not_integer", not_integer_number_of_steps
+        
+        integer_number_of_steps = sp.floor(not_integer_number_of_steps)
 
-            print "integer", integer
-            print "time_step", self.__time_step
-            print "steps", self.__steps_until_next_collision
-            print "until", self.__time_until_next_collision
+        self.__time_step = self.__time_until_next_collision / integer_number_of_steps
+        self.__steps_until_next_collision = integer_number_of_steps
+        self.__steps_since_last_collision_calculation = 0
 
     def next_step(self):
         if sp.isnan(self.__time_until_next_collision):
@@ -77,11 +73,11 @@ class Simulation(object):
             particle.update_position(self.__time_step)
 
         self.__steps_until_next_collision -= 1
+        self.__steps_since_last_collision_calculation += 1
 
         if self.__steps_until_next_collision == 0:
             self.__handle_collision()
-
-            # TODO handle the case where integer == 0 elegantly - this will mean handling > 1 collision / tick.
+            self.__clean_up_after_collision()
 
 container = pa.Particle2D((0, 0), (0, 0), radius = 100, mass = 1000, immovable = True)
 test_pa = pa.Particle2D((0, 10), (5, 5), radius = 5, mass = 1)
