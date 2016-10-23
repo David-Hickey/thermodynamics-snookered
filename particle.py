@@ -30,7 +30,6 @@ class Particle2D(object):
         self.__radius = float(abs(radius))
         self.__immovable = immovable
 
-        # TODO: implement calculations using these
         self.__next_collision_time = sp.nan
         self.__next_collision_particle = None
 
@@ -208,6 +207,8 @@ class Particle2D(object):
             # We're only interested in the first collision, that has a dt which
             # is greater than (or equal to) zero, so return the smallest
             # positive root:
+
+            #print root_1, root_2
             try:
                 return min(root for root in (root_1, root_2) if root >= 0)
             except ValueError:
@@ -243,6 +244,9 @@ class Particle2D(object):
         self_velocity_perpendicular = self.__velocity.dot(perpendicular_axis)
         other_velocity_perpendicular = other_particle.__velocity.dot(perpendicular_axis)
 
+        #print "Other radial", other_velocity_radial
+        #print "Other perp  ", other_velocity_perpendicular
+
         # Solve the equations for elastic collisions and conservation of
         # momentum in the radial direction.
         self_velocity_radial_after = (
@@ -251,11 +255,20 @@ class Particle2D(object):
             - (other_particle.__mass * self_velocity_radial)
         ) / (self.__mass + other_particle.__mass)
 
+        #other_velocity_radial_after = (
+        #    2 * (self.__mass * self_velocity_radial)
+        #    + (other_particle.__mass * other_velocity_radial)
+        #    + (self.__mass * other_velocity_radial)
+        #) / (self.__mass + other_particle.__mass)
+
         other_velocity_radial_after = (
-            2 * (self.__mass * self_velocity_radial)
-            + (other_particle.__mass * other_velocity_radial)
-            + (self.__mass * other_velocity_radial)
+            2 * self.__mass * self_velocity_radial
+            + other_particle.__mass * other_velocity_radial
+            - self.__mass * other_velocity_radial
         ) / (self.__mass + other_particle.__mass)
+
+        #print "Other radial after", other_velocity_radial_after
+        #print "Self radial after", self_velocity_radial_after
 
         # Form vectors for the new velocities in the new basis.
         self_velocity_after = sp.array([self_velocity_radial_after, self_velocity_perpendicular])
@@ -281,12 +294,18 @@ class Particle2D(object):
 
         # Update the velocities of the two particles.
         if not self.__immovable:
+            #print "Changing self velocity from", self.__velocity, "to", self_velocity_after
+            
             self.__velocity = self_velocity_after
             #self.update_position(0.001)
 
         if not other_particle.__immovable:
+            #print "Changing other velocity from", other_particle.__velocity, "to", other_velocity_after
+            
             other_particle.__velocity = other_velocity_after
             #self.update_position(0.001)
+
+        #print "Handled it"
 
 
     def __str__(self):
@@ -318,18 +337,13 @@ def calculate_time_to_collision_all(particles, time_now=0):
             time_passed_at_collision = time_to_collision + time_now
 
             if not sp.isnan(time_to_collision):
-                if not particle_1.has_defined_collision() or particle_1.__next_collision_time > time_passed_at_collision:
-                    particle_1.__next_collision_time = time_passed_at_collision
-                    particle_1.__next_collision_particle = particle_2
+                if not particle_1.has_defined_collision() or particle_1.get_next_collision_time() > time_passed_at_collision:
+                    particle_1.set_next_collision(time_passed_at_collision, particle_2)
                     
-                if sp.isnan(particle_2.__next_collision_time) or particle_2.__next_collision_time > time_passed_at_collision:
-                    particle_2.__next_collision_time = time_passed_at_collision
-                    particle_2.__next_collision_particle = particle_1    
+                if not particle_2.has_defined_collision() or particle_2.get_next_collision_time() > time_passed_at_collision:
+                    particle_2.set_next_collision(time_passed_at_collision, particle_1)
 
 def calculate_time_to_collision(particle, particles, time_now, propagate=True):
-    particle.__next_collision_time = sp.nan
-    particle.__next_collision_particle = None
-
     particle.set_next_collision(sp.nan, None)
     
     for current_particle in particles:
@@ -338,16 +352,16 @@ def calculate_time_to_collision(particle, particles, time_now, propagate=True):
             time_passed_at_collision = time_to_collision + time_now
 
             if not sp.isnan(time_to_collision):
-                if sp.isnan(particle.__next_collision_time) or particle.__next_collision_time > time_passed_at_collision:
+                if not particle.has_defined_collision() or particle.get_next_collision_time() > time_passed_at_collision:
                     particle.set_next_collision(time_passed_at_collision, current_particle)
                     
-                if sp.isnan(current_particle.__next_collision_time) or current_particle.__next_collision_time > time_passed_at_collision:
+                if not current_particle.has_defined_collision() or current_particle.get_next_collision_time() > time_passed_at_collision:
                     current_particle.set_next_collision(time_passed_at_collision, particle)
 
     if propagate:
         for current_particle in particles:
-            if current_particle.__next_collision_particle is particle:
-                current_particle.set_next_collision(sp.nan, None)
+            if current_particle.get_next_collision_particle() is particle:
+                #current_particle.set_next_collision(sp.nan, None)
 
                 calculate_time_to_collision(current_particle, particles, time_now, False)
 
