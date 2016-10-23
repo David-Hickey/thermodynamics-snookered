@@ -69,6 +69,19 @@ class Particle2D(object):
         """        
         return self.__velocity
 
+    def get_next_collision_time(self):
+        return self.__next_collision_time
+
+    def get_next_collision_particle(self):
+        return self.__next_collision_particle
+
+    def set_next_collision(self, time, partner):
+        self.__next_collision_time = time
+        self.__next_collision_particle = partner
+
+    def has_defined_collision(self):
+        return not (sp.isnan(self.__next_collision_time) or (self.__next_collision_particle is None))
+
     def calculate_position_later(self, time_step):
         """
         Calculate the position of the particle after a time time_step has
@@ -283,18 +296,15 @@ class Particle2D(object):
     def __repr__(self):
         return self.__str__()
 
-def calculate_time_to_collision_all(particles):
+def calculate_time_to_collision_all(particles, time_now=0):
     """
-    Compare all particles to find the next collisions.
+    Compare all particles to find the next collisions and store that data in the
+    particle objects.
 
     Arguments:
         particles: an array-like containing Particle objecs.
-
-    Returns: a list of FutureCollision instances, sorted by most imminent first.
+        time_now: the time passed when this function is called, defaulting to 0.
     """
-
-    future_collisions = []
-   
     for i_1, particle_1 in enumerate(particles):
         # We truncate the second list because otherwise we would compare each
         # particle to each other twice. This would be inefficient and would
@@ -304,17 +314,40 @@ def calculate_time_to_collision_all(particles):
         # compared to itself, so we do not have to check identity explicitly.
 
         for particle_2 in particles[:i_1]:
-            time_to_collision_pair = particle_1.calculate_time_to_collision(particle_2)
+            time_to_collision = particle_1.calculate_time_to_collision(particle_2)
+            time_passed_at_collision = time_to_collision + time_now
 
-            # We do not need to worry about any occurences of NaN here because
-            # any ==, < or > operation involving NaN is false.
+            if not sp.isnan(time_to_collision):
+                if not particle_1.has_defined_collision() or particle_1.__next_collision_time > time_passed_at_collision:
+                    particle_1.__next_collision_time = time_passed_at_collision
+                    particle_1.__next_collision_particle = particle_2
+                    
+                if sp.isnan(particle_2.__next_collision_time) or particle_2.__next_collision_time > time_passed_at_collision:
+                    particle_2.__next_collision_time = time_passed_at_collision
+                    particle_2.__next_collision_particle = particle_1    
 
-            if not sp.isnan(time_to_collision_pair):
-                future_collisions.append(FutureCollision(time_to_collision_pair, particle_1, particle_2))
+def calculate_time_to_collision(particle, particles, time_now, propagate=True):
+    particle.__next_collision_time = sp.nan
+    particle.__next_collision_particle = None
 
-    future_collisions.sort(key=lambda coll: coll.time_until)
+    particle.set_next_collision(sp.nan, None)
+    
+    for current_particle in particles:
+        if particle is not current_particle:
+            time_to_collision = particle.calculate_time_to_collision(current_particle)
+            time_passed_at_collision = time_to_collision + time_now
 
-    return future_collisions
+            if not sp.isnan(time_to_collision):
+                if sp.isnan(particle.__next_collision_time) or particle.__next_collision_time > time_passed_at_collision:
+                    particle.set_next_collision(time_passed_at_collision, current_particle)
+                    
+                if sp.isnan(current_particle.__next_collision_time) or current_particle.__next_collision_time > time_passed_at_collision:
+                    current_particle.set_next_collision(time_passed_at_collision, particle)
 
-def calculate_time_to_collision(particle, particles):
-    raise NotImplemented()
+    if propagate:
+        for current_particle in particles:
+            if current_particle.__next_collision_particle is particle:
+                current_particle.set_next_collision(sp.nan, None)
+
+                calculate_time_to_collision(current_particle, particles, time_now, False)
+
