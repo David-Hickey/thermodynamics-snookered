@@ -1,7 +1,4 @@
 import scipy as sp
-import scipy.linalg as spl
-
-from collections import namedtuple
 
 class Particle2D(object):
     """
@@ -341,7 +338,7 @@ def calculate_time_to_collision_all(particles, time_now=0):
                 if not particle_2.has_defined_collision() or particle_2.get_next_collision_time() > time_passed_at_collision:
                     particle_2.set_next_collision(time_passed_at_collision, particle_1)
 
-def calculate_time_to_collision(particle, particles, time_now, propagate=True):
+def calculate_time_to_collision(particle, particles, time_now, propagate=2):
     particle.set_next_collision(sp.nan, None)
     
     for current_particle in particles:
@@ -350,6 +347,7 @@ def calculate_time_to_collision(particle, particles, time_now, propagate=True):
             time_passed_at_collision = time_to_collision + time_now
 
             if not sp.isnan(time_to_collision):
+                # TODO: These lines hide a bug! Ideally we would have no non-mutual collisions.
                 if not particle.has_defined_collision() or particle.get_next_collision_time() > time_passed_at_collision:
                     particle.set_next_collision(time_passed_at_collision, current_particle)
                     
@@ -361,5 +359,5 @@ def calculate_time_to_collision(particle, particles, time_now, propagate=True):
             if current_particle.get_next_collision_particle() is particle:
                 #current_particle.set_next_collision(sp.nan, None)
 
-                calculate_time_to_collision(current_particle, particles, time_now, False)
+                calculate_time_to_collision(current_particle, particles, time_now, propagate - 1)
 
