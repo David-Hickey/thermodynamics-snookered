@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import scipy as sp
 import scipy.linalg as spl
 import particle as pa

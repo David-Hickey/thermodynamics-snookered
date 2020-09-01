@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import scipy as sp
 import scipy.optimize as spo
 
