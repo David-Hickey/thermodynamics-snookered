@@ -1,35 +1,47 @@
 import scipy as sp
+import scipy.linalg as spl
 
-class Particle2D(object):
-    """
-    Class representing a generalised 2-dimensional 'spherical' particle.
-    """
+class Particle(object):
 
-    def __init__(self, initial_position, initial_velocity=(0, 0), mass=1.0, radius=1.0, immovable=False):
+    # Global constant, tolerance for floating point comparisons.
+    tol = 1e-13
+
+    def __init__(self, initial_position, initial_velocity, mass, radius,
+                 immovable=False, colour=None):
         """
-        Create a new particle with the given values.
-
         Arguments:
             initial_position: the starting centre position of the particle, as
                               a 1D array-like of numbers.
             initial_velocity: the starting velocity of the particle, as a 1D
                               array-like of numbers. Should have the same
                               dimensions as initial_position.
-            mass: the mass of the particle
-            radius: the radius of the particle
+            mass: the mass of the particle.
+            radius: the radius of the particle.
+            immovable: whether the particle is immovable or not.
+            colour: colour of the particle in matplotlib colour format; 
+                    if unspecified colour is set randomly
         """
 
-        self.__position = sp.array(initial_position, dtype=float);
-        self.__velocity = sp.array(initial_velocity, dtype=float)
-        self.__mass = float(abs(mass))
-        self.__radius = float(abs(radius))
-        self.__immovable = immovable
+        self._position = sp.array(initial_position, dtype=float)
+        self._velocity = sp.array(initial_velocity, dtype=float)
 
-        self.__next_collision_time = sp.nan
-        self.__next_collision_particle = None
+        if len(self._position) != len(self._velocity):
+            raise ValueError("Position and velocity must have same dimensions")
+        
+        self._mass = float(abs(mass))
+        self._radius = float(abs(radius))
+        self._immovable = immovable
+        self._colour = colour
 
-        if self.__immovable:
-            self.__velocity *= 0
+        self._next_collision_time = sp.nan
+        self._next_collision_particle = None
+
+        self._momentum_received = 0.0
+        self._vector_momentum_received = sp.zeros(len(self._position))
+
+        if self._immovable:
+            self._velocity *= 0
+
 
     def get_mass(self):
         """
@@ -37,7 +49,7 @@ class Particle2D(object):
 
         Returns: a float representing the mass.
         """
-        return self.__mass
+        return self._mass
 
     def get_radius(self):
         """
@@ -45,7 +57,7 @@ class Particle2D(object):
 
         Returns: a float representing the radius.
         """
-        return self.__radius
+        return self._radius
 
     def get_current_position(self):
         """
@@ -53,7 +65,7 @@ class Particle2D(object):
 
         Returns: a 1D scipy array of floats representing the position vector.
         """
-        return self.__position
+        return self._position
 
     def get_current_velocity(self):
         """
@@ -61,45 +73,108 @@ class Particle2D(object):
 
         Returns: a 1D scipy array of floats representing the velocity vector.
         """        
-        return self.__velocity
+        return self._velocity
+
+    def set_velocity(self, velocity):
+        """
+        Set the velocity of the particle. Raises ValueError if the vector
+        has the wrong length or if this particle is immovable.
+        
+        Arguments:
+            velocity: an ndarray representing a velocity.
+        """
+        
+        if len(velocity) != len(self._velocity):
+            raise ValueError("Velocity must have same size as current")
+            
+        if self._immovable:
+            raise ValueError("Can't change velocity of an immovable particle")
+        
+        self._velocity = sp.array(velocity, dtype=float)
+
+    def set_position(self, position):
+        """
+        Set the position of the particle. Raises ValueError if the vector
+        has the wrong length or if this particle is immovable.
+        
+        Arguments:
+            velocity: an ndarray representing a velocity.
+        """
+        
+        if len(position) != len(self._position):
+            raise ValueError("Position must have same size as current")
+            
+        if self._immovable:
+            raise ValueError("Can't change position of an immovable particle")
+        
+        self._position = sp.array(position, dtype=float)
+
+
+    def is_immovable(self):
+        """
+        Get whether this particle is immovable.
+        
+        Returns: True if this particle cannot be moved; False otherwise.
+        """
+        return self._immovable
+        
+    def get_colour(self):
+        """
+        Get the colour of this particle, which may be None.
+        
+        Returns: the colour of this particle as an allowed matplotlib colour.
+        """
+        return self._colour
 
     def get_next_collision_time(self):
-        return self.__next_collision_time
+        """
+        Get the time of the next collision for this particle, which may be 
+        NaN if this particle has no upcoming collision.
+        
+        Returns: the time of the next collision as a float.
+        """
+        return self._next_collision_time
 
     def get_next_collision_particle(self):
-        return self.__next_collision_particle
+        """
+        Get the particle this one will collide with next, which may be None
+        if this particle has no upcoming collision.
+        
+        Returns: the Particle this will next collide with.
+        """
+        return self._next_collision_particle
 
     def set_next_collision(self, time, partner):
-        self.__next_collision_time = time
-        self.__next_collision_particle = partner
+        """
+        Set the time of the next collision and the particle with which this 
+        one will collide.
+        
+        Arguments:
+            time: the time of the collision as a float.
+            partner: the Particle this will next collide with.
+        """
+        self._next_collision_time = time
+        self._next_collision_particle = partner
 
     def has_defined_collision(self):
-        return not (sp.isnan(self.__next_collision_time) or (self.__next_collision_particle is None))
-
-    def calculate_position_later(self, time_step):
         """
-        Calculate the position of the particle after a time time_step has
-        passed, using linear extrapolation.
-
-        Arguments:
-            time_step: the time in the future (relative to now) at which the
-            position should be calculated.
-
-        Returns: a one-dimensional scipy array representing the expected
-                 position.
+        Get whether this particle has a collision in its forseeable future.
+        
+        Returns: True if it does; False otherwise.
         """
-        return self.__position + (self.__velocity * time_step)
+        return not (sp.isnan(self._next_collision_time)
+                    or (self._next_collision_particle is None))
 
     def intersects(self, other_particle):
         """
         Check whether this particle is intersecting another.
-
+    
         Returns: True if there is an intersection; False otherwise.
         """
-        return (
-            sp.sum((self.__position - other_particle.__position) ** 2)
-            < (self.__radius + other_particle.__radius) ** 2
-        )
+        displacement = self._position - other_particle.get_current_position()
+        radius_sum = self._radius + other_particle.get_radius()
+    
+        return sp.dot(displacement, displacement) <= radius_sum ** 2
 
     def update_position(self, time_step):
         """
@@ -110,9 +185,9 @@ class Particle2D(object):
             time_step: the time in the future (relative to now) to which the
             particle should be moved.
         """
-        self.__position = self.calculate_position_later(time_step)
+        self._position += self._velocity * time_step
 
-    def calculate_time_to_collision(self, other_particle):
+    def calculate_time_to_collision_single(self, other_particle):
         """
         Find the time until this particle will intersect with other_particle
         using linear extrapolation.
@@ -122,14 +197,7 @@ class Particle2D(object):
         circles make contact.
 
         The - in the right hand side of the equation is there for the case where
-        one of the circles is currently inside the other. This may be the case
-        if the vessel is another instance of circle.
-
-        TODO: if there is time, it should not be difficult to vectorise this
-        operation using meshgrid. This will ensure that all of the calculations
-        are done very efficiently. If this is done, it will have to be a
-        @staticmethod which accepts all the particles in its arguments. Meshgrid
-        operations would have to include meshgrid(r1, r1), meshgrid(r1, r2) etc.
+        one of the circles is currently inside the other.
 
         Arguments:
             other_particle: another Particle object.
@@ -139,225 +207,201 @@ class Particle2D(object):
                  (future) collision trajectory.
         """
 
-        # Calculate all of the parameters required and assign to variables.
-        #
-        # This is significantly more readable than trying to do all of this
-        # inline when solving.
+        # Calculate all of the coefficients.
+        velocity_diff = self._velocity - other_particle.get_current_velocity()
+        position_diff = self._position - other_particle.get_current_position()
 
-        # v1.v1 + v2.v2 - 2v1.v2
-        dt_sq_coefficient = sp.sum(
-            self.__velocity ** 2
-            + other_particle.__velocity ** 2
-            - 2 * (self.__velocity * other_particle.__velocity)
-        )
-
-        # 2(r1.v1 + r2.v2 - r1.v2 - r2.v1)
-        dt_coefficient = 2 * sp.sum(
-            (self.__position * self.__velocity)
-            + (other_particle.__position * other_particle.__velocity)
-            - (self.__position * other_particle.__velocity)
-            - (other_particle.__position * self.__velocity)
-        )
-
-        # r1.r1 + r2.r2 - 2r1.r2
-        constant_coefficient_initial = sp.sum(
-            self.__position ** 2
-            + other_particle.__position ** 2
-            - 2 * (self.__position * other_particle.__position)
-        )
+        dt_sq_coefficient = sp.dot(velocity_diff, velocity_diff)
+        dt_coefficient = 2 * sp.dot(position_diff, velocity_diff)
+        constant_coefficient_lhs = sp.dot(position_diff, position_diff)
 
         # (R1 +- R2) ** 2
         if self.intersects(other_particle):
-            rhs = (self.__radius - other_particle.__radius) ** 2
+            rhs = (self._radius - other_particle._radius) ** 2
         else:
-            rhs = (self.__radius + other_particle.__radius) ** 2
+            rhs = (self._radius + other_particle._radius) ** 2
 
-        constant_coefficient = constant_coefficient_initial - rhs
+        constant_coefficient = constant_coefficient_lhs - rhs
 
-        # Now we have the coefficients when the LHS is equal to zero, it is
-        # possible to solve the equation.
-        discriminant = dt_coefficient ** 2 - (4 * dt_sq_coefficient * constant_coefficient)
+        discriminant = dt_coefficient ** 2 \
+                       - (4 * dt_sq_coefficient * constant_coefficient)
 
-        #print "#printING SOLUTIONS TO QUADRATIC"
-        #print "disc", discriminant
-        #print dt_sq_coefficient, dt_coefficient, constant_coefficient
-        #print self.__position, other_particle.__position
-        #print self.__velocity, other_particle.__velocity
-        #print self.__radius, other_particle.__radius
-
-        if discriminant < 0 or dt_sq_coefficient == 0:
-            # Particles are not on a collision trajectory, so we can return NaN
-            # as described in the docstring.
+        if discriminant < 0:
             return sp.nan
-        else:
-            sqrt_discriminant = sp.sqrt(discriminant)
 
-            root_1 = (-dt_coefficient + sqrt_discriminant) / (2 * dt_sq_coefficient)
-            root_2 = (-dt_coefficient - sqrt_discriminant) / (2 * dt_sq_coefficient)
 
-            # If the roots are both negative there are no collisions in the future.
-            if root_1 < 0 and root_2 < 0:
-                return sp.nan
+        #sqrt_discriminant = sp.sqrt(discriminant)
+
+        roots = sp.roots([dt_sq_coefficient,
+                          dt_coefficient,
+                          constant_coefficient])
+
+        if sp.any(roots > Particle.tol):
 
             # We're only interested in the first collision, that has a dt which
-            # is greater than (or equal to) zero, so return the smallest
-            # positive root:
+            # is greater than zero, so return the smallest positive root:
+            return min(root for root in roots if root > Particle.tol)
 
-            #print root_1, root_2
-            try:
-                return min(root for root in (root_1, root_2) if root >= 0)
-            except ValueError:
-                print sqrt_discriminant, dt_sq_coefficient, dt_coefficient, constant_coefficient
+        return sp.nan
+            
+    def calculate_time_to_collision(self, particles, time_now, propagate=True):
+        """
+        Calculate which of the given particles this will collide with first, 
+        and when that will happen.
+        
+        Arguments:
+            particles: the particles to compare this one to.
+            time_now: the elapsed time now.
+            propagate: whether to also recalculate for the particles this one
+                       was originally going to collide with.
+        """
+        self.set_next_collision(sp.nan, None)
+        
+        for current_particle in particles:
+            if self is not current_particle:
+                time_to_collision = self.calculate_time_to_collision_single(
+                    current_particle
+                )
+                
+                time_at_collision = time_to_collision + time_now
+
+                if not sp.isnan(time_to_collision):
+                    if (not self.has_defined_collision()
+                        or self.get_next_collision_time() > time_at_collision):
+                        
+                        self.set_next_collision(time_at_collision,
+                                                    current_particle)
+                        
+                    if (not current_particle.has_defined_collision()
+                        or current_particle.get_next_collision_time() > time_at_collision):
+
+                        current_particle.set_next_collision(time_at_collision,
+                                                            self)
+
+        
+        if propagate:
+            for current_particle in particles:
+                current_partner = current_particle.get_next_collision_particle()
+                
+                current_hits_self = current_particle is self
+                self_hits_current = self._next_collision_particle is current_particle
+                
+                if current_hits_self or self_hits_current:
+                    current_particle.calculate_time_to_collision(particles,
+                                                time_now,
+                                                propagate=False)
 
     def handle_collision(self, other_particle):
         """
-        Handle the collision between the two particles. The velocity of the
-        two particles will be adjusted appropriately.
-
-        Arguments:
-            other_particle: another Particle object that this one is colliding
-                            with.
-        """
-
-        #print "POSITIONS", self.__position, other_particle.__position
-
-        # Find a new set of basis vectors to make the collision maths easier.
-        radial_axis = self.__position - other_particle.__position
-        radial_magnitude = sp.sqrt(sp.sum(radial_axis ** 2))
-        radial_axis /= radial_magnitude
+        Update the velocities of these particles as they undergo a collision.
         
-        perpendicular_axis = sp.array([-radial_axis[1], radial_axis[0]])
+        Arguments:
+            other_particle: the particle that is colliding with this one.
+        """
+        
+        other_mass = other_particle.get_mass()
+        other_velocity = other_particle.get_current_velocity()
 
+        self_momentum_before = self._mass * self._velocity
+        other_momentum_before = other_mass * other_velocity
 
-        #print "RADIAL AXIS", radial_axis
-        #print "PERPENDICULAR AXIS", perpendicular_axis
+        # Transform into a frame where other is initially at rest. rf_ prefix
+        # indicates this frame.
+        rf_velocity_self = self._velocity - other_velocity
+        
+        radial_vector = self._position - other_particle.get_current_position()
+        radial_unit_vector = radial_vector / sp.sqrt(sp.dot(radial_vector, radial_vector))
 
-        # Use the dot product to work out the velocities in the new basis vectors.
-        self_velocity_radial = self.__velocity.dot(radial_axis)
-        other_velocity_radial = other_particle.__velocity.dot(radial_axis)
+        rf_speed_self_parallel = rf_velocity_self.dot(radial_unit_vector)
+        rf_velocity_self_perpendicular = rf_velocity_self - rf_speed_self_parallel * radial_unit_vector
 
-        self_velocity_perpendicular = self.__velocity.dot(perpendicular_axis)
-        other_velocity_perpendicular = other_particle.__velocity.dot(perpendicular_axis)
-
-        #print "Other radial", other_velocity_radial
-        #print "Other perp  ", other_velocity_perpendicular
-
-        # Solve the equations for elastic collisions and conservation of
-        # momentum in the radial direction.
-        self_velocity_radial_after = (
-            2 * (other_particle.__mass * other_velocity_radial)
-            + (self.__mass * self_velocity_radial)
-            - (other_particle.__mass * self_velocity_radial)
-        ) / (self.__mass + other_particle.__mass)
-
-        #other_velocity_radial_after = (
-        #    2 * (self.__mass * self_velocity_radial)
-        #    + (other_particle.__mass * other_velocity_radial)
-        #    + (self.__mass * other_velocity_radial)
-        #) / (self.__mass + other_particle.__mass)
-
-        other_velocity_radial_after = (
-            2 * self.__mass * self_velocity_radial
-            + other_particle.__mass * other_velocity_radial
-            - self.__mass * other_velocity_radial
-        ) / (self.__mass + other_particle.__mass)
-
-        #print "Other radial after", other_velocity_radial_after
-        #print "Self radial after", self_velocity_radial_after
-
-        # Form vectors for the new velocities in the new basis.
-        self_velocity_after = sp.array([self_velocity_radial_after, self_velocity_perpendicular])
-        other_velocity_after = sp.array([other_velocity_radial_after, other_velocity_perpendicular])
-
-        # Find the i and j basis vectors in this basis.
-        i_vector = sp.array([1, 0])
-        j_vector = sp.array([0, 1])
-
-        i_vector_new_basis = sp.array([i_vector.dot(radial_axis), i_vector.dot(perpendicular_axis)])
-        j_vector_new_basis = sp.array([j_vector.dot(radial_axis), j_vector.dot(perpendicular_axis)])
-
-        # Convert the velocities in the new basis back to the more useful
-        # cartesian form.
-        self_velocity_after = sp.array([
-            self_velocity_after.dot(i_vector_new_basis),
-            self_velocity_after.dot(j_vector_new_basis)
-        ])
-        other_velocity_after = sp.array([
-            other_velocity_after.dot(i_vector_new_basis),
-            other_velocity_after.dot(j_vector_new_basis)
-        ])
-
-        # Update the velocities of the two particles.
-        if not self.__immovable:
-            #print "Changing self velocity from", self.__velocity, "to", self_velocity_after
+        # This is now a 1D conservation of momentum and energy problem
+        if other_particle.is_immovable():
             
-            self.__velocity = self_velocity_after
-            #self.update_position(0.001)
+            rf_speed_self_parallel_after = -rf_speed_self_parallel
+            rf_velocity_self_parallel_after = radial_unit_vector * rf_speed_self_parallel_after
+            self_velocity_after = other_velocity + rf_velocity_self_parallel_after + rf_velocity_self_perpendicular
+            self._velocity = self_velocity_after
 
-        if not other_particle.__immovable:
-            #print "Changing other velocity from", other_particle.__velocity, "to", other_velocity_after
+            other_velocity_after = other_particle.get_current_velocity()
+
+            #if 2 * self._position.dot(self._velocity) + self._velocity.dot(self._velocity) > 0:
+            #    # Very rarely a small inaccuracy can cause a ball to bounce out
+            #    # of the container, which can be fixed by this.
+            #    self_velocity_after = other_velocity - rf_velocity_self_parallel_after + rf_velocity_self_perpendicular
             
-            other_particle.__velocity = other_velocity_after
-            #self.update_position(0.001)
+        elif self._immovable:
+        
+            rf_speed_parallel_other_after = 2 * rf_speed_self_parallel
+            rf_velocity_other_parallel_after = radial_unit_vector * rf_speed_parallel_other_after
+            other_velocity_after = other_velocity + rf_velocity_other_parallel_after
+            other_particle.set_velocity(other_velocity_after)
+        
+            self_velocity_after = self._velocity
+            
+        else:
+            rf_speed_other_parallel_after = 2 * self._mass * rf_speed_self_parallel / (self._mass + other_mass)
+            rf_speed_self_parallel_after = rf_speed_self_parallel * (self._mass - other_mass) / (self._mass + other_mass)
 
-        #print "Handled it"
+            rf_velocity_self_parallel_after = radial_unit_vector * rf_speed_self_parallel_after
+            rf_velocity_other_parallel_after = radial_unit_vector * rf_speed_other_parallel_after
 
+            other_velocity_after = other_velocity + rf_velocity_other_parallel_after
+            self_velocity_after = other_velocity + rf_velocity_self_parallel_after + rf_velocity_self_perpendicular
+
+            self._velocity = self_velocity_after
+            other_particle.set_velocity(other_velocity_after)
+
+
+        # Update the received momentum (for pressure purposes)        
+        self_momentum_after = self._mass * self_velocity_after
+        self_momentum_change_vec = self_momentum_after - self_momentum_before  
+        
+        other_momentum_after = other_mass * other_velocity_after
+        other_momentum_change_vec = other_momentum_after - other_momentum_before
+        
+        if self._immovable:
+            self.increase_momentum_received(-other_momentum_change_vec)
+            other_particle.increase_momentum_received(other_momentum_change_vec)
+        else:
+            self.increase_momentum_received(self_momentum_change_vec)
+            other_particle.increase_momentum_received(-self_momentum_change_vec)
+
+    def increase_momentum_received(self, increase):
+        """
+        Increment the magnitude of impulse that has been exerted on this particle.
+        
+        Arguments:
+            increase: the increase in impulse, as a numpy ndarray.
+        """
+        
+        if isinstance(increase, sp.ndarray):
+            self._vector_momentum_received += increase
+            self._momentum_received += sp.linalg.norm(increase)
+        else:
+            raise ValueError("Increase must be an ndarray")
+        
+    def get_momentum_received(self):
+        """
+        Get the total impulse received, as a scalar.
+        
+        Returns: the impulse received as a float.
+        """
+        
+        return self._momentum_received
+        
+    def get_vector_momentum_received(self):
+        """
+        Get the total impulse received, as a vector.
+        
+        Returns: the impulse received as a numpy ndarray.
+        """
+        return self._vector_momentum_received
 
     def __str__(self):
-        return ("Particle2D[radius=%f, mass=%f, pos=%s, vel=%s"
-            % (self.__radius, self.__mass, str(self.__position), str(self.__velocity)))
-
-    def __repr__(self):
-        return self.__str__()
-
-def calculate_time_to_collision_all(particles, time_now=0):
-    """
-    Compare all particles to find the next collisions and store that data in the
-    particle objects.
-
-    Arguments:
-        particles: an array-like containing Particle objecs.
-        time_now: the time passed when this function is called, defaulting to 0.
-    """
-    for i_1, particle_1 in enumerate(particles):
-        # We truncate the second list because otherwise we would compare each
-        # particle to each other twice. This would be inefficient and would
-        # approximately double execution time, so we're not doing that.
-        #
-        # This has the added benefit of ensuring that no particle is ever
-        # compared to itself, so we do not have to check identity explicitly.
-
-        for particle_2 in particles[:i_1]:
-            time_to_collision = particle_1.calculate_time_to_collision(particle_2)
-            time_passed_at_collision = time_to_collision + time_now
-
-            if not sp.isnan(time_to_collision):
-                if not particle_1.has_defined_collision() or particle_1.get_next_collision_time() > time_passed_at_collision:
-                    particle_1.set_next_collision(time_passed_at_collision, particle_2)
-                    
-                if not particle_2.has_defined_collision() or particle_2.get_next_collision_time() > time_passed_at_collision:
-                    particle_2.set_next_collision(time_passed_at_collision, particle_1)
-
-def calculate_time_to_collision(particle, particles, time_now, propagate=2):
-    particle.set_next_collision(sp.nan, None)
-    
-    for current_particle in particles:
-        if particle is not current_particle:
-            time_to_collision = particle.calculate_time_to_collision(current_particle)
-            time_passed_at_collision = time_to_collision + time_now
-
-            if not sp.isnan(time_to_collision):
-                # TODO: These lines hide a bug! Ideally we would have no non-mutual collisions.
-                if not particle.has_defined_collision() or particle.get_next_collision_time() > time_passed_at_collision:
-                    particle.set_next_collision(time_passed_at_collision, current_particle)
-                    
-                if not current_particle.has_defined_collision() or current_particle.get_next_collision_time() > time_passed_at_collision:
-                    current_particle.set_next_collision(time_passed_at_collision, particle)
-
-    if propagate:
-        for current_particle in particles:
-            if current_particle.get_next_collision_particle() is particle:
-                #current_particle.set_next_collision(sp.nan, None)
-
-                calculate_time_to_collision(current_particle, particles, time_now, propagate - 1)
-
+        return ("Particle(radius=%f, mass=%f, pos=%s, vel=%s)"
+            % (self._radius,
+               self._mass,
+               str(self._position),
+               str(self._velocity)))
+               
